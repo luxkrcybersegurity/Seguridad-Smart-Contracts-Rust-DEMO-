@@ -1,8 +1,3 @@
-Aquí tenés el contenido convertido íntegro a **Markdown profesional, sin emojis**.
-
----
-
-````markdown
 # Writeup Challenge 1: Vulnerabilidad de Lógica Incorrecta  
 CTF de Seguridad Stellar - Explotación del Contrato de Lotería
 
