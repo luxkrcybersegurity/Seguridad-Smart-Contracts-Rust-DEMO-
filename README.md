@@ -164,20 +164,6 @@ Comprender cómo opera la vulnerabilidad permite:
 
 ---
 
-## Dónde encontrar el reto
-
-Repositorio público:
-[https://github.com/HackBalam/Seguridad-Smart-Contracts-Rust-Reto1.git](https://github.com/HackBalam/Seguridad-Smart-Contracts-Rust-Reto1.git)
-
-Incluye:
-
-* Contrato vulnerable
-* Instrucciones de despliegue
-* Código fix
-* Tests sugeridos
-
----
-
 ## Cómo seguir perfeccionándote
 
 Este challenge es solo el primer paso de una serie práctica enfocada en seguridad Web3:
